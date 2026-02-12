@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+
+  web:
+    build: .
+    container_name: fuel_web
+    command: bash /app/entrypoint.sh
+    volumes:
+      - .:/app
+      - ./fuel_data/fuel-prices-for-be-assessment.csv:/data/fuel-prices-for-be-assessment.csv:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - db
+
+  redis:
+    image: redis:7
+    container_name: fuel_redis
+
+  db:
+    image: postgres:15
+    container_name: fuel_postgres
+    environment:
+      POSTGRES_DB: fuel_db
+      POSTGRES_USER: fuel_user
+      POSTGRES_PASSWORD: fuel_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+
+volumes:
+  postgres_data:

@@ -1,52 +1,74 @@
+import csv
 from django.core.management.base import BaseCommand
-from django.conf import settings
 from django.db import transaction
-
 from routes.models import FuelStation
 from routes.services.geocoding import GeocodingService
-from routes.services.fuel_loader import FuelStationCSVLoader
 
 
 class Command(BaseCommand):
-    help = "Load fuel stations from CSV"
+    help = "Load fuel stations and geocode during ingestion"
 
     def add_arguments(self, parser):
-        parser.add_argument("--geocode", action="store_true")
+        parser.add_argument(
+            "--file",
+            default="/data/fuel-prices-for-be-assessment.csv"
+        )
 
-    def handle(self, *args, **options):
-        should_geocode = options["geocode"]
+    def handle(self, *args, **opts):
+        path = opts["file"]
+        geocoder = GeocodingService()
 
-        loader = FuelStationCSVLoader(settings.FUEL_DATA_PATH)
-        rows = loader.load()
+        created = 0
+        updated = 0
+        skipped = 0
 
-        self.stdout.write(f"Loaded {len(rows)} rows")
+        self.stdout.write("Reading CSV...")
 
-        geocoder = GeocodingService() if should_geocode else None
+        with open(path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
 
-        stations = []
+            rows = list(reader)
 
-        for row in rows:
-            lat, lng = (None, None)
-
-            if geocoder:
-                lat, lng = geocoder.get_coordinates(row.city, row.state)
-
-            stations.append(
-                FuelStation(
-                    opis_id=row.opis_id,
-                    name=row.name,
-                    address=row.address,
-                    city=row.city,
-                    state=row.state,
-                    rack_id=row.rack_id,
-                    retail_price=row.retail_price,
-                    latitude=lat,
-                    longitude=lng,
-                )
-            )
+        total = len(rows)
+        self.stdout.write(f"{total} rows detected")
 
         with transaction.atomic():
-            FuelStation.objects.all().delete()
-            FuelStation.objects.bulk_create(stations, batch_size=1000)
 
-        self.stdout.write(self.style.SUCCESS("Fuel stations loaded successfully"))
+            for i, row in enumerate(rows, 1):
+                try:
+                    obj, is_new = FuelStation.objects.get_or_create(
+                        opis_id=int(row["OPIS Truckstop ID"]),
+                        defaults={
+                            "name": row["Truckstop Name"].strip(),
+                            "address": row["Address"].strip(),
+                            "city": row["City"].strip(),
+                            "state": row["State"].strip(),
+                            "rack_id": int(row["Rack ID"]),
+                            "retail_price": float(row["Retail Price"]),
+                        }
+                    )
+
+                    if is_new:
+                        created += 1
+
+                    if obj.latitude is None:
+                        lat, lng = geocoder.get(obj.city, obj.state)
+                        obj.latitude = lat
+                        obj.longitude = lng
+                        obj.save(update_fields=["latitude", "longitude"])
+                        updated += 1
+                    else:
+                        skipped += 1
+
+                except Exception:
+                    continue
+
+                if i % 50 == 0 or i == total:
+                    self.stdout.write(
+                        f"{i}/{total} processed | "
+                        f"created={created} "
+                        f"geocoded={updated} "
+                        f"cached={skipped}"
+                    )
+
+        self.stdout.write(self.style.SUCCESS("Seeding complete"))
