@@ -138,4 +138,4 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-FUEL_DATA_PATH = BASE_DIR / 'fuel_data' / 'fuel-prices-for-be-assessment.csv'
+ORS_API_KEY=os.getenv("ORS_API_KEY")

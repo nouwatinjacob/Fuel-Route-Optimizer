@@ -19,7 +19,7 @@ class Command(BaseCommand):
         self.stdout.write(f"{total} stations need geocoding")
 
         for i, station in enumerate(qs, 1):
-            lat, lng = geocoder.get(station.city, station.state)
+            lat, lng = geocoder.get_coordinates(station.city, station.state)
 
             station.latitude = lat
             station.longitude = lng

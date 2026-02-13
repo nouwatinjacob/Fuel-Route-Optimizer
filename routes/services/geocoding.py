@@ -33,7 +33,7 @@ class GeocodingService:
     def _cache_key(self, city: str, state: str) -> str:
         return f"{self.CACHE_PREFIX}{city.lower().strip()}:{state.lower().strip()}"
 
-    def get(self, city: str, state: str) -> tuple[float | None, float | None]:
+    def get_coordinates(self, city: str, state: str) -> tuple[float | None, float | None]:
         key = self._cache_key(city, state)
 
         cached = cache.get(key)
